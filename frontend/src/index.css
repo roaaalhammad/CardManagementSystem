@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --font-arabic: "IBM Plex Sans Arabic", sans-serif;
+  --color-gold: #c79b2a;
+  --color-gold-dark: #ad8420;
+  --color-gold-700: #8f6d1a;
+  --color-gold-400: #d9ae45;
+  --color-gold-200: #ecd48f;
+  --color-gold-100: #f5e6c2;
+  --color-gold-50: #fbf3e1;
+  --color-brand-teal-900: #005b59;
+  --color-brand-teal-800: #006b69;
+  --color-brand-teal-700: #007c7a;
+  --color-brand-teal-600: #008f8c;
+  --color-brand-teal-100: #cce6e5;
+  --color-brand-teal-50: #e6f2f2;
+  --color-cream: #fcfbf6;
+}
