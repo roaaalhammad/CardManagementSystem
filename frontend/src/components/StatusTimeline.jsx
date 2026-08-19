@@ -4,7 +4,7 @@ const STAGE_STYLES = {
   done: "border-green-500 bg-green-500",
 };
 
-const LABELS = ["المدير المباشر", "التواصل الداخلي", "مدير التواصل الداخلي"];
+const LABELS = ["المدير المباشر", "مدير التواصل الداخلي", "التواصل الداخلي"];
 
 export default function StatusTimeline({ stages }) {
   return (

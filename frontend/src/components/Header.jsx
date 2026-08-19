@@ -1,4 +1,15 @@
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+
 export default function Header() {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  function handleLogout() {
+    logout();
+    navigate("/login");
+  }
+
   return (
     <div className="flex items-center justify-between border-b-2 border-gold-400 bg-white px-10 py-6 font-arabic">
       <img
@@ -11,7 +22,10 @@ export default function Header() {
         نظام إدارة طلبات البطاقات
       </h1>
 
-      <button className="flex items-center gap-2 rounded-lg bg-gold px-5 py-2.5 text-sm font-medium text-white hover:bg-gold-dark">
+      <button
+        onClick={handleLogout}
+        className="flex items-center gap-2 rounded-lg bg-gold px-5 py-2.5 text-sm font-medium text-white hover:bg-gold-dark"
+      >
         <svg
           xmlns="http://www.w3.org/2000/svg"
           className="h-4 w-4"

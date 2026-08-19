@@ -66,7 +66,7 @@ export default function EmployeeDashboard() {
     },
 
     {
-      title: "الطلبات السابقة",
+      title: "تحقق من تعريف",
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -76,13 +76,11 @@ export default function EmployeeDashboard() {
           strokeWidth="1.8"
           className="h-10 w-10"
         >
-          <path d="M7 3h8l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
-          <path d="M15 3v5h4" />
-          <path d="M9 13h6" />
-          <path d="M9 17h4" />
+          <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" />
+          <path d="M9 12l2 2 4-4" />
         </svg>
       ),
-      path: "/employee/requests",
+      path: "#",
       active: false,
     },
   ];

@@ -1,43 +1,71 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Dialog from "../../components/Dialog";
 import { useParams, useNavigate } from "react-router-dom";
-
-const MOCK_REQUEST = {
-  photo: null,
-  nameAr: "فاطمه محمد عبدالعزيز المحيميد",
-  nameEn: "Fatimah Mohameed AlMohaimeed",
-  nationalId: "1010223377",
-  employeeNumber: "6615933",
-  phone: "0596123532",
-  nationality: "سعودي",
-  department: "امانة منطقة القصيم",
-  grade: "14",
-  jobTitle: "مطور برامج متقدم أول",
-  issueReason: "بدل فاقد",
-  status: "جديد",
-  copyNumber: "3",
-};
+import { apiGet, apiPut } from "../../utils/api";
 
 function Field({ label, value }) {
   return (
     <div className="flex items-center gap-6">
-      <span className="w-56 shrink-0 text-right text-sm font-medium text-gray-700">
-        {label}:
-      </span>
-      <div className="flex-1 rounded-xl bg-gray-100 px-4 py-2.5 text-sm text-gray-600">
-        {value}
-      </div>
+      <span className="w-56 shrink-0 text-right text-sm font-medium text-gray-700">{label}:</span>
+      <div className="flex-1 rounded-xl bg-gray-100 px-4 py-2.5 text-sm text-gray-600">{value || "-"}</div>
     </div>
   );
 }
 
 export default function RequestDetails() {
+  const [request, setRequest] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [showAccept, setShowAccept] = useState(false);
   const [showReject, setShowReject] = useState(false);
-  const [copyNumber, setCopyNumber] = useState("");
   const [rejectReason, setRejectReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [otpMessage, setOtpMessage] = useState("");
   const { id } = useParams();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    async function loadRequest() {
+      setLoading(true);
+      setError("");
+      try {
+        const data = await apiGet(`/cardrequests/${id}`);
+        setRequest(data);
+      } catch (err) {
+        setError(err.message || "تعذر تحميل بيانات الطلب");
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadRequest();
+  }, [id]);
+
+  async function handleDecision(decisionValue, notes) {
+    setSubmitting(true);
+    setActionError("");
+    try {
+      const result = await apiPut(`/cardrequests/${id}/commstaff-decision`, { decision: decisionValue, notes });
+      setShowAccept(false);
+      setShowReject(false);
+      if (decisionValue === "Approved") {
+        setOtpMessage(result.otpMessage || "تم قبول الطلب وإرسال رمز التحقق للموظف.");
+        const data = await apiGet(`/cardrequests/${id}`);
+        setRequest(data);
+      } else {
+        navigate("/");
+      }
+    } catch (err) {
+      setActionError(err.message || "تعذر تسجيل القرار");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loading) return <p className="p-6 text-center text-sm text-gray-500">جاري التحميل...</p>;
+  if (error || !request) return <p className="p-6 text-center text-sm text-red-600">{error || "الطلب غير موجود"}</p>;
+
+  const canDecide = request.status === "قيد مراجعة التواصل الداخلي";
 
   return (
     <div className="p-6 font-arabic">
@@ -47,52 +75,61 @@ export default function RequestDetails() {
         </div>
 
         <div className="flex flex-col gap-5">
-         <div className="flex items-center gap-6">
-            <span className="w-56 shrink-0 text-right text-sm font-medium text-gray-700">
-              الصورة الشخصية:
-            </span>
-            <div className="flex h-28 w-28 items-center justify-center rounded-lg border border-gray-300 bg-white">
-              <svg viewBox="0 0 100 100" className="h-full w-full text-gray-300" fill="none" stroke="currentColor">
-                <rect x="2" y="2" width="96" height="96" />
-                <line x1="2" y1="2" x2="98" y2="98" />
-                <line x1="98" y1="2" x2="2" y2="98" />
-              </svg>
+          <Field label="الاسم الرباعي بالعربي" value={request.employeeNameAr} />
+          <Field label="الاسم الرباعي بالأنجليزي" value={request.employeeNameEn} />
+          <Field label="السجل المدني" value={request.employeeNationalId} />
+          <Field label="الرقم الوظيفي" value={request.employeeNumber} />
+          <Field label="جهة العمل" value={request.department} />
+          <Field label="المسمى الوظيفي" value={request.jobTitle} />
+          <Field label="نوع الطلب" value={request.requestType} />
+          <Field label="حالة الطلب" value={request.status} />
+        </div>
+
+        {request.approvals?.length > 0 && (
+          <div className="mt-8 border-t border-gray-200 pt-4">
+            <h2 className="mb-3 text-sm font-bold text-gray-700">سجل القرارات</h2>
+            <div className="flex flex-col gap-2">
+              {request.approvals.map((a, i) => (
+                <div key={i} className="rounded-lg bg-gray-100 px-4 py-2 text-xs text-gray-600">
+                  {a.approvalStage === "DirectManager" ? "المدير المباشر" : "التواصل الداخلي"}: {a.decision === "Approved" ? "موافقة" : "رفض"}
+                  {a.notes ? ` — ${a.notes}` : ""} — {a.approverNameAr}
+                </div>
+              ))}
             </div>
           </div>
+        )}
 
-          <Field label="الاسم الرباعي بالعربي" value={MOCK_REQUEST.nameAr} />
-          <Field label="الاسم الرباعي بالأنجليزي" value={MOCK_REQUEST.nameEn} />
-          <Field label="السجل المدني" value={MOCK_REQUEST.nationalId} />
-          <Field label="الرقم الوظيفي" value={MOCK_REQUEST.employeeNumber} />
-          <Field label="رقم الجوال" value={MOCK_REQUEST.phone} />
-          <Field label="الجنسية" value={MOCK_REQUEST.nationality} />
-          <Field label="جهة العمل" value={MOCK_REQUEST.department} />
-          <Field label="المرتبة" value={MOCK_REQUEST.grade} />
-          <Field label="المسمى الوظيفي" value={MOCK_REQUEST.jobTitle} />
-          <Field label="سبب اصدار بطاقة جديدة" value={MOCK_REQUEST.issueReason} />
-          <Field label="حالة الطلب" value={MOCK_REQUEST.status} />
-          <Field label="رقم النسخة" value={MOCK_REQUEST.copyNumber} />
-        </div>
+        {otpMessage && <p className="mt-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">{otpMessage}</p>}
+        {actionError && <p className="mt-4 text-sm text-red-600">{actionError}</p>}
 
         <div className="mt-10 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowAccept(true)}
-              className="rounded-lg bg-gold px-8 py-2 text-sm font-medium text-white hover:bg-gold-dark"
-            >
-              قبول
-            </button>
-            <button
-              onClick={() => setShowReject(true)}
-              className="rounded-lg bg-gray-300 px-8 py-2 text-sm font-medium text-gray-700 hover:bg-gray-400"
-            >
-              رفض
-            </button>
+            {canDecide && (
+              <>
+                <button
+                  onClick={() => setShowAccept(true)}
+                  className="rounded-lg bg-gold px-8 py-2 text-sm font-medium text-white hover:bg-gold-dark"
+                >
+                  قبول
+                </button>
+                <button
+                  onClick={() => setShowReject(true)}
+                  className="rounded-lg bg-gray-300 px-8 py-2 text-sm font-medium text-gray-700 hover:bg-gray-400"
+                >
+                  رفض
+                </button>
+              </>
+            )}
+            {(request.status === "بانتظار التسليم" || request.status === "تم التسليم") && (
+              <button
+                onClick={() => navigate(`/requests/${id}/card`)}
+                className="rounded-lg bg-gray-300 px-8 py-2 text-sm font-medium text-gray-700 hover:bg-gray-400"
+              >
+                تصميم البطاقة
+              </button>
+            )}
           </div>
-          <button
-            onClick={() => navigate("/")}
-            className="text-sm text-gray-500 hover:text-brand-teal-700"
-          >
+          <button onClick={() => navigate("/")} className="text-sm text-gray-500 hover:text-brand-teal-700">
             العودة الى القائمة {">>"}
           </button>
         </div>
@@ -101,31 +138,23 @@ export default function RequestDetails() {
       <Dialog
         open={showAccept}
         onClose={() => setShowAccept(false)}
-        title="الرجاء ادخال البيانات التالية لاكمال قبول الطلب:"
+        title="هل أنت متأكد من قبول هذا الطلب؟"
         actions={
           <>
-            <button
-              onClick={() => setShowAccept(false)}
-              className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300"
-            >
+            <button onClick={() => setShowAccept(false)} className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">
               إلغاء
             </button>
             <button
-              onClick={() => setShowAccept(false)}
-              className="rounded-lg bg-gold px-4 py-2 text-sm font-medium text-white hover:bg-gold-dark"
+              disabled={submitting}
+              onClick={() => handleDecision("Approved", "موافق")}
+              className="rounded-lg bg-gold px-4 py-2 text-sm font-medium text-white hover:bg-gold-dark disabled:opacity-50"
             >
               موافق
             </button>
           </>
         }
       >
-        <label className="mb-2 block text-sm text-gray-600">رقم نسخة:</label>
-        <input
-          type="text"
-          value={copyNumber}
-          onChange={(e) => setCopyNumber(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-teal-600 focus:outline-none"
-        />
+        <p className="text-sm text-gray-600">سيتم إرسال رمز تحقق عبر رسالة نصية للموظف لتسليم البطاقة.</p>
       </Dialog>
 
       <Dialog
@@ -134,15 +163,12 @@ export default function RequestDetails() {
         title="الرجاء ادخال البيانات التالية لاكمال رفض الطلب:"
         actions={
           <>
-            <button
-              onClick={() => setShowReject(false)}
-              className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300"
-            >
+            <button onClick={() => setShowReject(false)} className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">
               إلغاء
             </button>
             <button
-              disabled={!rejectReason.trim()}
-              onClick={() => setShowReject(false)}
+              disabled={!rejectReason.trim() || submitting}
+              onClick={() => handleDecision("Rejected", rejectReason)}
               className="rounded-lg bg-gold px-4 py-2 text-sm font-medium text-white hover:bg-gold-dark disabled:opacity-50"
             >
               موافق

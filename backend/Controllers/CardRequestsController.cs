@@ -5,6 +5,9 @@ using Microsoft.EntityFrameworkCore;
 using CardManagementSystem.Api.Data;
 using CardManagementSystem.Api.DTOs;
 using CardManagementSystem.Api.Models;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using CardManagementSystem.Api.Services;
 
 namespace CardManagementSystem.Api.Controllers
 {
@@ -18,11 +21,13 @@ namespace CardManagementSystem.Api.Controllers
 
         private readonly AppDbContext _db;
         private readonly IWebHostEnvironment _env;
+        private readonly AuthenticaService _authentica;
 
-        public CardRequestsController(AppDbContext db, IWebHostEnvironment env)
+        public CardRequestsController(AppDbContext db, IWebHostEnvironment env, AuthenticaService authentica)
         {
             _db = db;
             _env = env;
+            _authentica = authentica;
         }
 
         private int? GetCurrentUserId()
@@ -62,7 +67,6 @@ namespace CardManagementSystem.Api.Controllers
             {
                 query = query.Where(r => r.User!.ManagerId == userId.Value);
             }
-            // CommStaff: بدون فلترة، يشوف كل الطلبات
 
             var requests = await query
                 .OrderByDescending(r => r.SubmittedAt)
@@ -124,8 +128,6 @@ namespace CardManagementSystem.Api.Controllers
                 return Forbid();
             }
 
-            // CommStaff: بدون تحقق إضافي، يشوف كل الطلبات
-
             var dto = new CardRequestDetailDto
             {
                 RequestId = cardRequest.RequestId,
@@ -146,7 +148,8 @@ namespace CardManagementSystem.Api.Controllers
                     AttachmentId = a.AttachmentId,
                     FileName = a.FileName,
                     ContentType = a.ContentType,
-                    FileSizeBytes = a.FileSizeBytes
+                    FileSizeBytes = a.FileSizeBytes,
+                    Url = $"/api/cardrequests/attachments/{a.AttachmentId}/file"
                 }).ToList(),
                 Approvals = cardRequest.Approvals.Select(a => new ApprovalHistoryDto
                 {
@@ -159,6 +162,305 @@ namespace CardManagementSystem.Api.Controllers
             };
 
             return Ok(dto);
+        }
+
+        [HttpGet("attachments/{attachmentId}/file")]
+        [Authorize]
+        public async Task<IActionResult> GetAttachmentFile(int attachmentId)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+            {
+                return Unauthorized();
+            }
+
+            var currentUser = await _db.Users.Include(u => u.Role)
+                .FirstOrDefaultAsync(u => u.UserId == userId.Value);
+
+            if (currentUser == null)
+            {
+                return Unauthorized();
+            }
+
+            var attachment = await _db.RequestAttachments
+                .Include(a => a.Request)
+                    .ThenInclude(r => r!.User)
+                .FirstOrDefaultAsync(a => a.AttachmentId == attachmentId);
+
+            if (attachment == null || attachment.Request == null)
+            {
+                return NotFound();
+            }
+
+            var roleName = currentUser.Role!.RoleName;
+
+            if (roleName == "Employee" && attachment.Request.UserId != userId.Value)
+            {
+                return Forbid();
+            }
+
+            if (roleName == "DirectManager" && attachment.Request.User!.ManagerId != userId.Value)
+            {
+                return Forbid();
+            }
+
+            if (!System.IO.File.Exists(attachment.FilePath))
+            {
+                return NotFound();
+            }
+
+            var bytes = await System.IO.File.ReadAllBytesAsync(attachment.FilePath);
+            var contentType = string.IsNullOrEmpty(attachment.ContentType) ? "application/octet-stream" : attachment.ContentType;
+            return File(bytes, contentType);
+        }
+
+        [HttpGet("{id}/design")]
+        [Authorize(Roles = "CommStaff")]
+        public async Task<IActionResult> GetCardDesign(int id)
+        {
+            var cardRequest = await _db.CardRequests
+                .Include(r => r.User)
+                .FirstOrDefaultAsync(r => r.RequestId == id);
+
+            if (cardRequest == null)
+            {
+                return NotFound(new { message = "الطلب غير موجود" });
+            }
+
+            var design = await _db.CardDesigns.FirstOrDefaultAsync(d => d.RequestId == id);
+            var latestAttachment = await _db.RequestAttachments
+                .Where(a => a.RequestId == id)
+                .OrderByDescending(a => a.UploadedAt)
+                .FirstOrDefaultAsync();
+
+            string? designPhotoUrl;
+            if (design != null && !string.IsNullOrEmpty(design.PhotoPath))
+            {
+                designPhotoUrl = $"/api/cardrequests/{id}/design/photo";
+            }
+            else if (latestAttachment != null)
+            {
+                designPhotoUrl = $"/api/cardrequests/attachments/{latestAttachment.AttachmentId}/file";
+            }
+            else
+            {
+                designPhotoUrl = null;
+            }
+
+            var dto = new CardDesignDto
+            {
+                RequestId = id,
+                NameAr = !string.IsNullOrWhiteSpace(design?.NameAr) ? design!.NameAr : cardRequest.User!.FullNameAr,
+                NameEn = !string.IsNullOrWhiteSpace(design?.NameEn) ? design!.NameEn : cardRequest.User!.FullNameEn,
+                JobTitle = !string.IsNullOrWhiteSpace(design?.JobTitle) ? design!.JobTitle : cardRequest.User!.JobTitle,
+                NationalId = cardRequest.User!.NationalId,
+                EmployeeNumber = cardRequest.User.EmployeeNumber,
+                Department = cardRequest.User.Department,
+                CopyNumber = design?.CopyNumber ?? 1,
+                IssueDate = design?.IssueDate ?? DateTime.UtcNow,
+                PhotoUrl = designPhotoUrl,
+                IsLocked = design?.IsLocked ?? false
+            };
+
+            return Ok(dto);
+        }
+
+        [HttpGet("{id}/design/photo")]
+        [Authorize]
+        public async Task<IActionResult> GetCardDesignPhoto(int id)
+        {
+            var design = await _db.CardDesigns.FirstOrDefaultAsync(d => d.RequestId == id);
+
+            if (design == null || string.IsNullOrEmpty(design.PhotoPath) || !System.IO.File.Exists(design.PhotoPath))
+            {
+                return NotFound();
+            }
+
+            var ext = Path.GetExtension(design.PhotoPath).ToLowerInvariant();
+            var contentType = ext == ".png" ? "image/png" : "image/jpeg";
+
+            var bytes = await System.IO.File.ReadAllBytesAsync(design.PhotoPath);
+            return File(bytes, contentType);
+        }
+
+        [HttpPost("{id}/design")]
+        [Authorize(Roles = "CommStaff")]
+        public async Task<IActionResult> SaveCardDesign(int id, [FromForm] SaveCardDesignDto dto)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+            {
+                return Unauthorized();
+            }
+
+            var cardRequest = await _db.CardRequests
+                .Include(r => r.User)
+                .FirstOrDefaultAsync(r => r.RequestId == id);
+
+            if (cardRequest == null)
+            {
+                return NotFound(new { message = "الطلب غير موجود" });
+            }
+
+            var design = await _db.CardDesigns.FirstOrDefaultAsync(d => d.RequestId == id);
+
+            if (design != null && design.IsLocked)
+            {
+                return BadRequest(new { message = "تم قفل تصميم البطاقة، لا يمكن تعديله" });
+            }
+
+            if (design == null)
+            {
+                design = new CardDesign { RequestId = id };
+                _db.CardDesigns.Add(design);
+            }
+
+            design.NameAr = string.IsNullOrWhiteSpace(dto.NameAr) ? cardRequest.User!.FullNameAr : dto.NameAr;
+            design.NameEn = string.IsNullOrWhiteSpace(dto.NameEn) ? cardRequest.User!.FullNameEn : dto.NameEn;
+            design.JobTitle = string.IsNullOrWhiteSpace(dto.JobTitle) ? cardRequest.User!.JobTitle : dto.JobTitle;
+
+            if (dto.Photo != null)
+            {
+                var uploadsFolder = Path.Combine(_env.ContentRootPath, "Uploads", "CardDesigns");
+                Directory.CreateDirectory(uploadsFolder);
+
+                var fileName = $"{id}_{Guid.NewGuid()}{Path.GetExtension(dto.Photo.FileName)}";
+                var filePath = Path.Combine(uploadsFolder, fileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await dto.Photo.CopyToAsync(stream);
+                }
+
+                design.PhotoPath = filePath;
+            }
+
+            design.LastEditedByUserId = userId.Value;
+            design.LastEditedAt = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync();
+
+            return Ok(new { message = "تم حفظ تصميم البطاقة بنجاح" });
+        }
+
+        [HttpPost("{id}/design/lock")]
+        [Authorize(Roles = "CommStaff")]
+        public async Task<IActionResult> LockCardDesign(int id)
+        {
+            var design = await _db.CardDesigns.FirstOrDefaultAsync(d => d.RequestId == id);
+
+            if (design == null)
+            {
+                return BadRequest(new { message = "يجب حفظ تصميم البطاقة أولاً قبل القفل" });
+            }
+
+            if (design.IsLocked)
+            {
+                return BadRequest(new { message = "تصميم البطاقة مقفل مسبقاً" });
+            }
+
+            design.IsLocked = true;
+            design.IsPrinted = true;
+            design.PrintedAt = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync();
+
+            return Ok(new { message = "تم قفل تصميم البطاقة بنجاح" });
+        }
+
+        [HttpGet("{id}/design/pdf")]
+        [Authorize(Roles = "CommStaff")]
+        public async Task<IActionResult> ExportCardDesignPdf(int id)
+        {
+            var cardRequest = await _db.CardRequests
+                .Include(r => r.User)
+                .FirstOrDefaultAsync(r => r.RequestId == id);
+
+            if (cardRequest == null)
+            {
+                return NotFound(new { message = "الطلب غير موجود" });
+            }
+
+            var design = await _db.CardDesigns.FirstOrDefaultAsync(d => d.RequestId == id);
+
+            if (design == null)
+            {
+                return BadRequest(new { message = "يجب حفظ تصميم البطاقة أولاً" });
+            }
+
+            byte[]? photoBytes = null;
+            if (!string.IsNullOrEmpty(design.PhotoPath) && System.IO.File.Exists(design.PhotoPath))
+            {
+                photoBytes = await System.IO.File.ReadAllBytesAsync(design.PhotoPath);
+            }
+            else
+            {
+                var latestAttachment = await _db.RequestAttachments
+                    .Where(a => a.RequestId == id)
+                    .OrderByDescending(a => a.UploadedAt)
+                    .FirstOrDefaultAsync();
+
+                if (latestAttachment != null && System.IO.File.Exists(latestAttachment.FilePath))
+                {
+                    photoBytes = await System.IO.File.ReadAllBytesAsync(latestAttachment.FilePath);
+                }
+            }
+
+            var templatePath = Path.Combine(_env.ContentRootPath, "Assets", "card-template.png");
+            byte[]? templateBytes = System.IO.File.Exists(templatePath)
+                ? await System.IO.File.ReadAllBytesAsync(templatePath)
+                : null;
+
+            const string goldColor = "#B08D57";
+
+            var pdfBytes = Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(new PageSize(350, 550));
+                    page.Margin(0);
+                    page.ContentFromRightToLeft();
+
+                    if (templateBytes != null)
+                    {
+                        page.Background().Image(templateBytes).FitArea();
+                    }
+
+                    page.Content().PaddingTop(132).Column(col =>
+                    {
+                        col.Item().AlignCenter().Width(156).Height(156).Element(c =>
+                        {
+                            if (photoBytes != null)
+                            {
+                                c.CornerRadius(78).Image(photoBytes).FitArea();
+                            }
+                            else
+                            {
+                                c.CornerRadius(78).Background(Colors.Grey.Lighten3);
+                            }
+                        });
+
+                        col.Item().PaddingTop(20).AlignCenter().Text(design.NameAr).FontSize(16).Bold();
+                        col.Item().AlignCenter().Text(design.NameEn).FontSize(12);
+                        col.Item().PaddingTop(4).AlignCenter().Text(design.JobTitle).FontSize(11).FontColor(goldColor).Bold();
+                        col.Item().PaddingTop(10).AlignCenter().Text($"السجل المدني: {cardRequest.User!.NationalId}").FontSize(10);
+                        col.Item().AlignCenter().Text($"الرقم الوظيفي: {cardRequest.User.EmployeeNumber}").FontSize(10);
+
+                        col.Item().PaddingTop(60).Row(row =>
+                        {
+                            row.RelativeItem().Element(c => c
+                            .Background(goldColor)
+                            .PaddingVertical(2).PaddingHorizontal(6)
+                            .Text($"نسخة: {design.CopyNumber}").FontSize(9).FontColor(Colors.White));
+                            row.RelativeItem().AlignLeft().Text(cardRequest.User.Department).FontSize(9);
+                        });
+
+                        col.Item().PaddingTop(4).AlignRight().Text($"تاريخ الإصدار: {design.IssueDate:dd/MM/yyyy}").FontSize(9).FontColor(Colors.Black);
+                    });
+                });
+            }).GeneratePdf();
+
+            return File(pdfBytes, "application/pdf", $"card-{id}.pdf");
         }
 
         [HttpPost]
@@ -288,7 +590,9 @@ namespace CardManagementSystem.Api.Controllers
                 return BadRequest(new { message = "القرار يجب أن يكون Approved أو Rejected" });
             }
 
-            var cardRequest = await _db.CardRequests.FirstOrDefaultAsync(r => r.RequestId == id);
+            var cardRequest = await _db.CardRequests
+                .Include(r => r.User)
+                .FirstOrDefaultAsync(r => r.RequestId == id);
 
             if (cardRequest == null)
             {
@@ -310,22 +614,22 @@ namespace CardManagementSystem.Api.Controllers
                 DecidedAt = DateTime.UtcNow
             });
 
-            string? otpCode = null;
+            string otpMessage = string.Empty;
 
             if (decision.Decision == "Approved")
             {
-                otpCode = Random.Shared.Next(100000, 999999).ToString();
-
-                _db.OtpVerifications.Add(new OtpVerification
-                {
-                    RequestId = cardRequest.RequestId,
-                    Code = otpCode,
-                    GeneratedAt = DateTime.UtcNow,
-                    ExpiresAt = DateTime.UtcNow.AddHours(24)
-                });
-
                 cardRequest.Status = "بانتظار التسليم";
                 cardRequest.ReadyForDelivery = true;
+
+                if (!string.IsNullOrWhiteSpace(cardRequest.User?.PhoneNumber))
+                {
+                    var (success, message) = await _authentica.SendOtpAsync(cardRequest.User!.PhoneNumber!);
+                    otpMessage = message;
+                }
+                else
+                {
+                    otpMessage = "لا يوجد رقم جوال مسجل للموظف لإرسال رمز التحقق";
+                }
             }
             else
             {
@@ -336,7 +640,7 @@ namespace CardManagementSystem.Api.Controllers
 
             await _db.SaveChangesAsync();
 
-            return Ok(new { message = "تم تسجيل القرار بنجاح", status = cardRequest.Status, otpCode });
+            return Ok(new { message = "تم تسجيل القرار بنجاح", status = cardRequest.Status, otpMessage });
         }
 
         [HttpPost("{id}/deliver")]
@@ -349,7 +653,9 @@ namespace CardManagementSystem.Api.Controllers
                 return Unauthorized();
             }
 
-            var cardRequest = await _db.CardRequests.FirstOrDefaultAsync(r => r.RequestId == id);
+            var cardRequest = await _db.CardRequests
+                .Include(r => r.User)
+                .FirstOrDefaultAsync(r => r.RequestId == id);
 
             if (cardRequest == null)
             {
@@ -361,35 +667,17 @@ namespace CardManagementSystem.Api.Controllers
                 return BadRequest(new { message = "هذا الطلب غير جاهز للتسليم" });
             }
 
-            var otp = await _db.OtpVerifications
-                .Where(o => o.RequestId == id && !o.IsVerified)
-                .OrderByDescending(o => o.GeneratedAt)
-                .FirstOrDefaultAsync();
-
-            if (otp == null)
+            if (string.IsNullOrWhiteSpace(cardRequest.User?.PhoneNumber))
             {
-                return BadRequest(new { message = "لا يوجد رمز تحقق فعال لهذا الطلب" });
+                return BadRequest(new { message = "لا يوجد رقم جوال مسجل للموظف" });
             }
 
-            if (otp.ExpiresAt < DateTime.UtcNow)
-            {
-                return BadRequest(new { message = "انتهت صلاحية رمز التحقق" });
-            }
+            var (verified, verifyMessage) = await _authentica.VerifyOtpAsync(cardRequest.User!.PhoneNumber!, request.Code);
 
-            if (otp.AttemptCount >= MaxOtpAttempts)
+            if (!verified)
             {
-                return BadRequest(new { message = "تجاوزت الحد الأقصى لمحاولات إدخال الرمز" });
+                return BadRequest(new { message = verifyMessage });
             }
-
-            if (otp.Code != request.Code)
-            {
-                otp.AttemptCount += 1;
-                await _db.SaveChangesAsync();
-                return BadRequest(new { message = "رمز التحقق غير صحيح", attemptsRemaining = MaxOtpAttempts - otp.AttemptCount });
-            }
-
-            otp.IsVerified = true;
-            otp.VerifiedAt = DateTime.UtcNow;
 
             _db.CardDeliveries.Add(new CardDelivery
             {

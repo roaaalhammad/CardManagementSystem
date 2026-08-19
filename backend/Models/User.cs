@@ -12,6 +12,7 @@ namespace CardManagementSystem.Api.Models
         public string PasswordHash { get; set; } = string.Empty;
         public string JobTitle { get; set; } = string.Empty;
         public string Department { get; set; } = string.Empty;
+        public string? PhoneNumber { get; set; }
 
         public int RoleId { get; set; }
         public Role? Role { get; set; }

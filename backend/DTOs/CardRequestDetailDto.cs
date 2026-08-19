@@ -27,6 +27,7 @@ namespace CardManagementSystem.Api.DTOs
         public string FileName { get; set; } = string.Empty;
         public string ContentType { get; set; } = string.Empty;
         public long FileSizeBytes { get; set; }
+        public string? Url { get; set; }
     }
 
     public class ApprovalHistoryDto

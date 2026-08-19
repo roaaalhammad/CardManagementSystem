@@ -1,3 +1,4 @@
+using QuestPDF.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -7,6 +8,8 @@ using CardManagementSystem.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+QuestPDF.Settings.License = LicenseType.Community;
+
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -15,6 +18,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddScoped<JwtService>();
+builder.Services.AddHttpClient<CardManagementSystem.Api.Services.AuthenticaService>();
 
 var jwtKey = builder.Configuration["Jwt:Key"]!;
 builder.Services.AddAuthentication(options =>
@@ -93,6 +97,7 @@ using (var scope = app.Services.CreateScope())
             NationalId = "1010304050",
             EmployeeNumber = "7000111",
             Email = "saad@test.com",
+            PhoneNumber = "+966568850820",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("Test@1234"),
             JobTitle = "مدير الإدارة العامة لتقنية المعلومات",
             Department = "الادارة العامة لتقنية المعلومات",
@@ -109,6 +114,7 @@ using (var scope = app.Services.CreateScope())
                 NationalId = "1010223377",
                 EmployeeNumber = "6615933",
                 Email = "fatimah@test.com",
+                PhoneNumber = "+966568850820",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("Test@1234"),
                 JobTitle = "مطور برامج متقدم أول",
                 Department = "الادارة العامة لتقنية المعلومات",
@@ -122,6 +128,7 @@ using (var scope = app.Services.CreateScope())
                 NationalId = "1000000001",
                 EmployeeNumber = "1001",
                 Email = "roaa@test.com",
+                PhoneNumber = "+966502985036",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("Test@1234"),
                 JobTitle = "موظف تواصل داخلي",
                 Department = "إدارة التواصل الداخلي",
@@ -130,6 +137,27 @@ using (var scope = app.Services.CreateScope())
         );
         db.SaveChanges();
     }
+}
+
+// تحديث أرقام الجوال للمستخدمين الموجودين مسبقاً (إذا كانت فاضية)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var phoneByNationalId = new Dictionary<string, string>
+    {
+        { "1010304050", "+966568850820" },
+        { "1010223377", "+966568850820" },
+        { "1000000001", "+966502985036" }
+    };
+    foreach (var pair in phoneByNationalId)
+    {
+        var user = db.Users.FirstOrDefault(u => u.NationalId == pair.Key);
+        if (user != null && string.IsNullOrEmpty(user.PhoneNumber))
+        {
+            user.PhoneNumber = pair.Value;
+        }
+    }
+    db.SaveChanges();
 }
 
 app.Run();
