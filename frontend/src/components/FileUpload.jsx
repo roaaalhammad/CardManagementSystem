@@ -1,6 +1,11 @@
 import { useRef } from "react";
 
-export default function FileUpload({ currentImageUrl, onFileSelected, accept = "image/png,image/jpeg" }) {
+export default function FileUpload({
+  currentImageUrl,
+  selectedFileName,
+  onFileSelected,
+  accept = "image/png,image/jpeg",
+}) {
   const inputRef = useRef(null);
 
   const handleChange = (e) => {
@@ -9,32 +14,38 @@ export default function FileUpload({ currentImageUrl, onFileSelected, accept = "
   };
 
   return (
-    <div className="flex flex-col items-center gap-3 font-arabic">
-      <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-gold-400 bg-gold-50">
+    <div className="flex flex-col gap-6 font-arabic">
+      <div>
+        <p className="mb-2 text-sm font-bold text-gray-800">تنزيل الصورة:</p>
         {currentImageUrl ? (
-          <img src={currentImageUrl} alt="الصورة الشخصية" className="h-full w-full object-cover" />
+          <a href={currentImageUrl} download className="inline-block rounded-lg bg-gold px-6 py-2 text-sm font-medium text-white hover:bg-gold-dark">
+            تنزيل الصورة
+          </a>
         ) : (
-          <span className="text-xs text-gray-500">لم يتم اختيار صورة</span>
+          <button
+            type="button"
+            disabled
+            className="inline-block cursor-not-allowed rounded-lg bg-gray-200 px-6 py-2 text-sm font-medium text-gray-400"
+          >
+            تنزيل الصورة
+          </button>
         )}
       </div>
 
-      <div className="flex gap-2">
-        {currentImageUrl && (
-            <a  
-            href={currentImageUrl}
-            download
-            className="rounded-lg border border-brand-teal-700 px-3 py-1.5 text-xs font-medium text-brand-teal-700 hover:bg-brand-teal-50"
+      <div>
+        <p className="mb-2 text-sm font-bold text-gray-800">ارفاق صورة الشخصية الجديدة:</p>
+        <div className="flex items-center justify-between overflow-hidden rounded-lg border border-gray-300">
+          <span className="flex-1 px-3 py-2 text-right text-sm text-gray-500">
+            {selectedFileName || "لم يتم اختيار اي صورة"}
+          </span>
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="whitespace-nowrap bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300"
           >
-            تنزيل الصورة الحالية
-          </a>
-        )}
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="rounded-lg bg-gold px-3 py-1.5 text-xs font-medium text-white hover:bg-gold-dark"
-        >
-          رفع صورة بديلة
-        </button>
+            اختر صورة
+          </button>
+        </div>
         <input
           ref={inputRef}
           type="file"
