@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-
 import logo from "../../assets/logo.png";
 import backgroundTop from "../../assets/background.png";
+import { useAuth } from "../../context/AuthContext";
 
 function UserIcon() {
   return (
@@ -18,7 +18,6 @@ function UserIcon() {
         stroke="currentColor"
         strokeWidth="1.5"
       />
-
       <path
         d="M3.5 21C3.5 16.8579 7.30558 13.5 12 13.5C16.6944 13.5 20.5 16.8579 20.5 21"
         stroke="currentColor"
@@ -47,7 +46,6 @@ function PasswordIcon() {
         stroke="currentColor"
         strokeWidth="1.5"
       />
-
       <path
         d="M8 10V7C8 4.79086 9.79086 3 12 3C14.2091 3 16 4.79086 16 7V10"
         stroke="currentColor"
@@ -73,7 +71,6 @@ function EyeIcon({ visible }) {
           stroke="currentColor"
           strokeWidth="1.5"
         />
-
         <circle
           cx="12"
           cy="12"
@@ -84,7 +81,6 @@ function EyeIcon({ visible }) {
       </svg>
     );
   }
-
   return (
     <svg
       viewBox="0 0 24 24"
@@ -99,28 +95,24 @@ function EyeIcon({ visible }) {
         strokeWidth="1.5"
         strokeLinecap="round"
       />
-
       <path
         d="M10.58 10.58C10.21 10.95 10 11.45 10 12C10 13.1 10.9 14 12 14C12.55 14 13.05 13.79 13.42 13.42"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
       />
-
       <path
         d="M6.71 6.72C4.91 7.79 3.5 9.52 2.5 12C4.5 15.5 7.7 17.5 12 17.5C13.88 17.5 15.56 17.15 17.03 16.47"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
       />
-
       <path
         d="M14.08 5.03C13.43 4.87 12.74 4.79 12 4.79C7.7 4.79 4.5 7.1 2.5 12"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
       />
-
       <path
         d="M19.02 7.03C20.04 8.13 20.88 9.45 21.5 12C20.72 13.36 19.71 14.5 18.48 15.4"
         stroke="currentColor"
@@ -133,65 +125,61 @@ function EyeIcon({ visible }) {
 
 export default function Login() {
   const navigate = useNavigate();
-
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
-    username: "",
+    nationalId: "",
     password: "",
   });
-
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-
     setFormData((previous) => ({
       ...previous,
       [name]: value,
     }));
-
     setErrors((previous) => ({
       ...previous,
       [name]: "",
+      general: "",
     }));
   };
 
   const validate = () => {
     const newErrors = {};
-
-    if (!formData.username.trim()) {
-      newErrors.username = "يرجى إدخال اسم المستخدم";
+    if (!formData.nationalId.trim()) {
+      newErrors.nationalId = "يرجى إدخال رقم الهوية";
     }
-
     if (!formData.password) {
       newErrors.password = "يرجى إدخال كلمة المرور";
     }
-
     return newErrors;
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-
     const validationErrors = validate();
-
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
       return;
     }
-
     setIsLoading(true);
-
+    setErrors({});
     try {
-      /*
-       * تسجيل الدخول الحقيقي سيتم ربطه مع Login API لاحقًا.
-       *
-       * حاليًا:
-       * إذا كانت البيانات غير فارغة يتم الانتقال إلى Dashboard.
-       */
-
-      navigate("/dashboard");
+      const user = await login(formData.nationalId, formData.password);
+      if (user.role === "Employee") {
+        navigate("/employee/dashboard");
+      } else if (user.role === "DirectManager") {
+        navigate("/manager/dashboard");
+      } else if (user.role === "CommStaff") {
+        navigate("/dashboard");
+      } else {
+        navigate("/dashboard");
+      }
+    } catch (err) {
+      setErrors({ general: err.message });
     } finally {
       setIsLoading(false);
     }
@@ -208,7 +196,6 @@ export default function Login() {
         alt=""
         className="pointer-events-none absolute left-0 top-0 w-[600px] max-w-[55vw]"
       />
-
       <div className="relative z-10 flex min-h-screen items-center justify-center px-5 py-10">
         <section className="w-full max-w-[650px] overflow-hidden rounded-2xl border border-gray-200 bg-white/95 shadow-[0_4px_12px_rgba(0,0,0,0.18)]">
           <div className="px-8 pb-7 pt-12 sm:px-12 sm:pt-14">
@@ -221,12 +208,18 @@ export default function Login() {
               />
             </div>
 
+            {errors.general && (
+              <div className="mb-6 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-center text-sm text-red-700">
+                {errors.general}
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} noValidate>
-              {/* اسم المستخدم */}
+              {/* رقم الهوية */}
               <div className="mb-5">
                 <div
                   className={`flex h-[70px] items-center gap-5 rounded-xl border bg-white px-4 transition ${
-                    errors.username
+                    errors.nationalId
                       ? "border-red-500"
                       : "border-gray-400 focus-within:border-brand-teal-700"
                   }`}
@@ -234,25 +227,22 @@ export default function Login() {
                   <div className="text-brand-teal-700">
                     <UserIcon />
                   </div>
-
                   <input
                     type="text"
-                    name="username"
-                    value={formData.username}
+                    name="nationalId"
+                    value={formData.nationalId}
                     onChange={handleChange}
-                    placeholder="تسجيل الدخول"
+                    placeholder="رقم الهوية"
                     autoComplete="username"
                     className="h-full min-w-0 flex-1 bg-transparent text-right text-lg text-gray-800 outline-none placeholder:text-gray-400"
                   />
                 </div>
-
-                {errors.username && (
+                {errors.nationalId && (
                   <p className="mt-2 px-2 text-sm text-red-600">
-                    {errors.username}
+                    {errors.nationalId}
                   </p>
                 )}
               </div>
-
               {/* كلمة المرور */}
               <div className="mb-3">
                 <div
@@ -265,7 +255,6 @@ export default function Login() {
                   <div className="text-brand-teal-700">
                     <PasswordIcon />
                   </div>
-
                   <input
                     type={showPassword ? "text" : "password"}
                     name="password"
@@ -275,7 +264,6 @@ export default function Login() {
                     autoComplete="current-password"
                     className="h-full min-w-0 flex-1 bg-transparent text-right text-lg text-gray-800 outline-none placeholder:text-gray-400"
                   />
-
                   <button
                     type="button"
                     onClick={() =>
@@ -291,14 +279,12 @@ export default function Login() {
                     <EyeIcon visible={showPassword} />
                   </button>
                 </div>
-
                 {errors.password && (
                   <p className="mt-2 px-2 text-sm text-red-600">
                     {errors.password}
                   </p>
                 )}
               </div>
-
               {/* نسيت كلمة المرور */}
               <div className="mb-10 flex justify-start">
                 <Link
@@ -308,7 +294,6 @@ export default function Login() {
                   نسيت كلمة المرور
                 </Link>
               </div>
-
               {/* زر الدخول */}
               <button
                 type="submit"
@@ -319,7 +304,6 @@ export default function Login() {
               </button>
             </form>
           </div>
-
           {/* الخط الذهبي السفلي */}
           <div className="px-5 pb-4">
             <div className="h-2 rounded-full bg-gold" />
