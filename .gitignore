@@ -7,3 +7,7 @@ bin/
 obj/
 backend/Uploads/
 frontend-backup-old/
+
+# Local secrets (never commit real values here)
+backend/appsettings.Local.json
+backend/secrets.json
